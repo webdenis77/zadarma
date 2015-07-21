@@ -7,6 +7,7 @@ class Handler
 	private $key;
 	private $secret;
 
+	/** @var Object containing JSON decoded result **/
 	public $result;
 
 	const TYPE_GET = 1;
@@ -38,6 +39,19 @@ class Handler
 		}
 	}
 
+	/**
+	 * Performs the request to API
+	 *
+	 * Possible values for $type:
+	 * \Zadarma\Handler::TYPE_GET
+	 * \Zadarma\Handler::TYPE_POST
+	 * \Zadarma\Handler::TYPE_PUT
+	 *
+	 * @param int $type
+	 * @param type $method Full non-cutted string of method name from official doc (e.g. "/v1/info/balance/")
+	 * @param type $data Array containing key-value pairs (option_name => option_value)
+	 * @return object $this
+	 */
 	public function request($type, $method, $data = [])
 	{
 		if (empty($type)) {
