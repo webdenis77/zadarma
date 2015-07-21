@@ -2,8 +2,6 @@
 
 namespace Zadarma;
 
-use Zadarma\Exception as Exception;
-
 class Handler
 {
 	private $key;
@@ -21,33 +19,33 @@ class Handler
 		$secret = __DIR__.'/../config/secret.key';
 
 		if (!file_exists($key)) {
-			throw new Exception('Отсутсвует key-файл');
+			throw new \Exception('Отсутсвует key-файл');
 		}
 
 		if (!file_exists($secret)) {
-			throw new Exception('Отсутсвует secret-файл');
+			throw new \Exception('Отсутсвует secret-файл');
 		}
 
 		$this->key = trim(file_get_contents($key));
 		$this->secret = trim(file_get_contents($secret));
 
 		if (empty($this->key)) {
-			throw new Exception('Key-файл пуст');
+			throw new \Exception('Key-файл пуст');
 		}
 
 		if (empty($this->secret)) {
-			throw new Exception('Secret-файл пуст');
+			throw new \Exception('Secret-файл пуст');
 		}
 	}
 
 	public function request($type, $method, $data = [])
 	{
 		if (empty($type)) {
-			throw new Exception('Не указан тип запроса');
+			throw new \Exception('Не указан тип запроса');
 		}
 
 		if (empty($method)) {
-			throw new Exception('Не указан метод запроса');
+			throw new \Exception('Не указан метод запроса');
 		}
 
 		ksort($data);
@@ -94,13 +92,13 @@ class Handler
 		curl_close($ch);
 
 		if ($error) {
-			throw new Exception($error);
+			throw new \Exception($error);
 		}
 
 		$this->result = json_decode($result);
 
 		if ($this->result->status == 'error') {
-			throw new Exception($this->result->message);
+			throw new \Exception($this->result->message);
 		}
 
 		return $this;
