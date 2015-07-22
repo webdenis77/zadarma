@@ -6,25 +6,35 @@ class Handler
 {
 	private $key;
 	private $secret;
+	private $limits;
+	private $headers;
 
-	/** @var Object containing JSON decoded result **/
 	public $result;
 
 	const TYPE_GET = 1;
 	const TYPE_POST = 2;
 	const TYPE_PUT = 3;
 
-	public function __construct()
+	/**
+	 * Конструктор
+	 *
+	 * @param bool $limits Добавление информации о текущих лимитах к ответу
+	 * @return object $this
+	 */
+	public function __construct($limits = false)
 	{
+		$this->limits = $limits;
+		$this->headers = array();
+
 		$key = __DIR__.'/../config/key.key';
 		$secret = __DIR__.'/../config/secret.key';
 
 		if (!file_exists($key)) {
-			throw new \Exception('Отсутсвует key-файл');
+			throw new \Exception('Отсутствует key-файл');
 		}
 
 		if (!file_exists($secret)) {
-			throw new \Exception('Отсутсвует secret-файл');
+			throw new \Exception('Отсутствует secret-файл');
 		}
 
 		$this->key = trim(file_get_contents($key));
@@ -40,19 +50,19 @@ class Handler
 	}
 
 	/**
-	 * Performs the request to API
+	 * Выполняет запрос к API
 	 *
-	 * Possible values for $type:
-	 * \Zadarma\Handler::TYPE_GET
-	 * \Zadarma\Handler::TYPE_POST
-	 * \Zadarma\Handler::TYPE_PUT
+	 * Возможные значения для $type:
+	 * self::TYPE_GET
+	 * self::TYPE_POST
+	 * self::TYPE_PUT
 	 *
 	 * @param int $type
-	 * @param type $method Full non-cutted string of method name from official doc (e.g. "/v1/info/balance/")
-	 * @param type $data Array containing key-value pairs (option_name => option_value)
+	 * @param type $method Полная строка метода из документации (например: "/v1/info/balance/")
+	 * @param type $data Массив параметров array(ключ => значение)
 	 * @return object $this
 	 */
-	public function request($type, $method, $data = [])
+	public function request($type, $method, $data = array())
 	{
 		if (empty($type)) {
 			throw new \Exception('Не указан тип запроса');
@@ -62,10 +72,16 @@ class Handler
 			throw new \Exception('Не указан метод запроса');
 		}
 
+		foreach ($data as $key => $value) {
+			if (empty($value)) {
+				unset($data[$key]);
+			}
+		}
+
 		ksort($data);
 		$params = http_build_query($data);
 		$sign = base64_encode(hash_hmac('sha1', $method.$params.md5($params), $this->secret));
-		$headers = ['Authorization: '.$this->key.':'.$sign];
+		$headers = array('Authorization: '.$this->key.':'.$sign);
 		$post = false;
 		$put = false;
 		$url = '';
@@ -88,6 +104,10 @@ class Handler
 		curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 		curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
 
+		if ($this->limits) {
+			curl_setopt($ch, CURLOPT_HEADERFUNCTION, array($this, 'parseHeaderLine'));
+		}
+
 		if ($post) {
 			curl_setopt($ch, CURLOPT_POST, true);
 			curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
@@ -97,7 +117,6 @@ class Handler
 			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
 			curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
 		}
-
 
 		$result = curl_exec($ch);
 		$info = curl_getinfo($ch);
@@ -109,12 +128,29 @@ class Handler
 			throw new \Exception($error);
 		}
 
-		$this->result = json_decode($result);
+		$this->result = json_decode($result, true);
 
-		if ($this->result->status == 'error') {
-			throw new \Exception($this->result->message);
+		if (!isset($this->result['status'])) {
+			throw new \Exception($this->result['message']);
+		}
+
+		if ($this->result['status'] == 'error') {
+			throw new \Exception($this->result['message']);
+		}
+
+		if ($this->limits) {
+			$this->result['limits'] = $this->headers;
 		}
 
 		return $this;
+	}
+
+	private function parseHeaderLine($curl, $header_line)
+	{
+		if (preg_match_all('/^X-(RateLimit-[a-zA-Z]+):\s([0-9]+)/', $header_line, $m)) {
+			$this->headers[$m[1][0]] = (int)$m[2][0];
+		}
+
+		return strlen($header_line);
 	}
 }

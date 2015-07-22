@@ -1,32 +1,158 @@
 # zadarma
-## Installation
-Edit you composer.json
+Простая PHP-обертка для работы с API Zadarma
+
+## Что умеет
+- Запросы к API
+- Отображение текущих лимитов
+- Обработка входящих уведомлений и ответ на них- 
+
+## Требования
+- PHP >= 5.3.0
+
+## Установка
+### Composer
+Добавьте в блок "require" в composer.json вашего проекта:
 ```json
-"nabarabane/zadarma": "dev-master"
+"nabarabane/zadarma": "~1.0"
 ```
-or just
+или:
 ```sh
-composer require nabarabane/zadarma
+composer require nabarabane/zadarma:~1.0
 ```
-## Usage
-Refer to [official documentaion](https://zadarma.com/en/support/api) for methods description
 
-First you should create "config" folder in package directory and put there two files:
-- "key.key"
-- "secret.key"
+### Или
+Скачайте архив с библиотекой и распакуйте его в удобное для вас место.  
+Подключите нужные файлы:
+```php
+<?php
 
-containing private keys you got in your Zadarma profile ([https://ss.zadarma.com/api/](https://ss.zadarma.com/api/))
+/* Если планируете совершать запросы к API */
+require('Handler.php');
 
-Example: request for a callback
+/* Если планируете принимать входящие уведомления */
+require('Webhook.php');
 ```
+
+## Подготовка
+Создайте папку "config" в корне библиотеки, если пользуетесь composer.  
+Если вы подключайте фалйы без использования composer, папка config должна лежать на директорию выше подключаемых файлов.  
+Туда положите два файла:
+- key.key
+- secret.key
+
+Файлы должны содержать API-ключи, которые вы можете получить на странице своего личного кабинета - [https://ss.zadarma.com/api/](https://ss.zadarma.com/api/)
+
+## Использование
+Ознакомьтесь с [официальной документацией](https://zadarma.com/ru/support/api/), чтобы получить подробную информацию о списке досутпных методов и параметрах, передаваемых в них.
+
+### Запросы к API
+
+**Простой запрос без параметров**
+```
+<?php
+
+use \Zadarma\Handler;
+
+/* Не забудьте заинклюдить файлы библиотеки или автолоадер композера */
+
+/* Обрачиваем в try{} catch() {}, чтбы отлавливать исключения */
+
 try {
-	$handler = new \Zadarma\Handler();
-	$result = $handler->request(\Zadarma\Handler::TYPE_GET, '/v1/request/callback/', [
-		'from' => '71111111111',
-		'to' => '72222222222'
-	])->result;
-	echo('Success');
+	$handler = new Handler();
+	/* Вызывается метод "request", который выпоняет запрос к API */
+	/* Первый параметр - тип запроса (GET, PUT или POST)
+	    GET - Handler::TYPE_GET
+	    PUT - Handler::TYPE_PUT
+	    POST - Handler::TYPE_POST
+	Тип запроса конретного метода подписан рядом с названием метода в документации
+	Метод "request" возвращает объект \Zadarma\Handler() с публичным свойством "result",
+	которое содержит в себе массив ответа, полученный в результате запроса */
+	$result = $handler->request(Handler::TYPE_GET, '/v1/info/balance/')->result;
 } catch (\Exception $e) {
+    /* Любая ошибка в ответе API выбрасывает исключение */
 	echo 'Error: '.$e->getMessage();
 }
+```
+
+**Пример запроса на callback**
+```php
+<?php
+
+use \Zadarma\Handler;
+
+/* Не забудьте заинклюдить файлы библиотеки или автолоадер композера */
+
+try {
+	$handler = new Handler();
+	/* Если запрос принимает параметры, они передаются третьим параметром в виде именованного массива */
+	$result = $handler->request(Handler::TYPE_GET, '/v1/request/callback/', array(
+	    'from' => '71111111111',
+	    'to' => '72222222222'
+	))->result;
+} catch (\Exception $e) {
+    // Любая ошибка в ответе API выбрасывает исключение
+	echo 'Error: '.$e->getMessage();
+}
+```
+В случае успешного запроса, возвращается именованный массив ответа, в случае ошибки всегда выбрасывается исключение.  
+Пример ответа на запрос о балансе
+```
+array(
+    'status' => 'success',
+    'balance' => 0.849,
+    'currency' => 'USD'
+);
+```
+Также есть возможность добавить к ответу информацию о ваших текущих лимитах на запросы к API.  
+Для этого нужно вызвать конструктор с параметром "$limits = true"
+```php
+$handler = new Handler(true);
+```
+Тогда информация о лимитах будет добавлена к общему массиву ответа:
+```php
+array(
+    'status' => 'success',
+    'balance' => 0.849,
+    'currency' => 'USD',
+    'limits' => array(
+        'RateLimit-Reset' => 1437508962,
+        'RateLimit-Limit' => 100,
+        'RateLimit-Remaining' => 99
+    )
+);
+```
+
+### Уведомления о звонках
+Zadarma может отсылать на ваш сервер информацию о каждом входящем звонке.  
+Используйте следующий код на странице, которая будет принимать запросы от Zadarma, и укажите ее адрес в личном кабинете.  
+Не нужно добавлять поверочный код, чтобы система приняла ссылку, все проверки уже включены в обработчик.
+```php
+<?php
+
+use \Zadarma\Webhook;
+
+/* Не забудьте заинклюдить файлы библиотеки или автолоадер композера */
+
+$listener = new Webhook();
+
+/* Метод принимает единственным параметром callback-функцию,
+которая будет вызвана, когда к вам поступит запрос от Zadarma о входящем звонке.
+В функцию передается четыре параметра:
+    $phone_from - номер, с которого был совершен звонок;
+    $phone_to - номер, на который поступил звонок;
+    $time - время начала звонка в формате UNIX Timestamp;
+    $zadarma - объект слушателя \Zadarma\Webhook(). */
+$listener->onCall(function($phone_from, $phone_to, $time, $zadarma) {
+    /* Тут ваш код */
+    
+	/* Если хотите отправить обратно информацию о переадресации или смене имени звонящего
+	Вы можете передать как оба параметра сразу, так и только один из них */
+	$zadarma->respond(array(
+	    'redirect' => 123, // ID сценария редиректа или внутренний номер АТС
+	    'caller_name' => 'CallerName' // Имя звонящего
+	));
+});
+
+/* Включаем слушателя */
+$listener->listen();
 ```
